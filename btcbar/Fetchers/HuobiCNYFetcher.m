@@ -1,26 +1,29 @@
 //
-//  MtGoxUSDFetcher.m
+//  HuobiCNYFetcher.m
 //  btcbar
 //
+//  Created by lwei on 2/13/14.
+//  Copyright (c) 2014 nearengine. All rights reserved.
+//
 
-#import "MtGoxUSDFetcher.h"
+#import "HuobiCNYFetcher.h"
 
-@implementation MtGoxUSDFetcher
+@implementation HuobiCNYFetcher
 
 - (id)init
 {
     if (self = [super init])
     {
         // Menu Item Name
-        self.ticker_menu = @"MtGoxUSD";
-        
+        self.ticker_menu = @"HuobiCNY";
+
         // Website location
-        self.url = @"https://www.mtgox.com/";
-        
+        self.url = @"http://www.huobi.com";
+
         // Immediately request first update
         [self requestUpdate];
     }
-    
+
     return self;
 }
 
@@ -29,7 +32,7 @@
 {
     // Update the ticker value
     _ticker = tickerString;
-    
+
     // Trigger notification to update ticker
     [[NSNotificationCenter defaultCenter] postNotificationName:@"btcbar_ticker_update" object:self];
 }
@@ -37,14 +40,14 @@
 // Initiates an asyncronous HTTP connection
 - (void)requestUpdate
 {
-    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:@"https://data.mtgox.com/api/2/BTCUSD/money/ticker_fast"]];
-    
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:@"http://market.huobi.com/staticmarket/detail.html"]];
+
     // Set the request's user agent
-    [request addValue:@"btcbar/2.0 (MtGoxUSDFetcher)" forHTTPHeaderField:@"User-Agent"];
-    
+    [request addValue:@"btcbar/2.0 (HuobiCNYFetcher)" forHTTPHeaderField:@"User-Agent"];
+
     // Initialize a connection from our request
     NSURLConnection *connection = [[NSURLConnection alloc] initWithRequest:request delegate:self];
-    
+
     // Go go go
     [connection start];
 }
@@ -70,26 +73,37 @@
 // Parse data after load
 - (void)connectionDidFinishLoading:(NSURLConnection *)connection
 {
+    NSString *responseStr = [[NSString alloc] initWithData:self.responseData encoding:NSUTF8StringEncoding];
+    if (!responseStr) {
+        return;
+    }
+
+    NSRange range = [responseStr rangeOfString:@"(?<=\\().*(?=\\))" options:NSRegularExpressionSearch];
+    if (range.location > responseStr.length || range.location + range.length > responseStr.length) {
+        return;
+    }
+
+    NSString *resultsStr = [responseStr substringWithRange:range];
+
+    if (!resultsStr) {
+        return;
+    }
+
     // Parse the JSON into results
     NSError *jsonParsingError = nil;
-    NSDictionary *results = [[NSDictionary alloc] init];
-    results = [NSJSONSerialization JSONObjectWithData:self.responseData options:0 error:&jsonParsingError];
-    
+    id results = [NSJSONSerialization JSONObjectWithData:[resultsStr dataUsingEncoding:NSUTF8StringEncoding] options:NSJSONReadingAllowFragments error:&jsonParsingError];
+
     // Results parsed successfully from JSON
     if (results)
     {
-        // Get API status
-        NSString *resultsStatus = [results objectForKey:@"result"];
-        
-        // If API call succeeded update the ticker...
-        if ([resultsStatus isEqualToString:@"success"])
-        {
-            NSDecimalNumber *resultsStatusNumber = [NSDecimalNumber decimalNumberWithString:[[[results objectForKey:@"data"] objectForKey:@"last"] objectForKey:@"value"]];
-            NSNumberFormatter *currencyStyle = [[NSNumberFormatter alloc] init];
-            currencyStyle.locale = [[NSLocale alloc] initWithLocaleIdentifier:@"en_US"];
-            currencyStyle.numberStyle = NSNumberFormatterCurrencyStyle;
+        NSNumber *ticker = [results objectForKey:@"p_new"];
+        if (ticker) {
+            NSNumberFormatter *numberFormatter = [[NSNumberFormatter alloc] init];
+            NSString *resultsStatus = [numberFormatter stringFromNumber:ticker];
+            resultsStatus = [NSString stringWithFormat:@"¥%@", resultsStatus];
+            
             self.error = nil;
-            self.ticker = [currencyStyle stringFromNumber:resultsStatusNumber];
+            self.ticker = resultsStatus;
         }
         // Otherwise log an error...
         else
@@ -109,7 +123,7 @@
 // HTTP request failed
 - (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error
 {
-    self.error = [NSError errorWithDomain:@"com.nearengine.btcbar" code:0 userInfo:[NSDictionary dictionaryWithObjectsAndKeys: @"Connection Error", NSLocalizedDescriptionKey, @"Could not connect to MtGox.", NSLocalizedFailureReasonErrorKey, nil]];
+    self.error = [NSError errorWithDomain:@"com.nearengine.btcbar" code:0 userInfo:[NSDictionary dictionaryWithObjectsAndKeys: @"Connection Error", NSLocalizedDescriptionKey, @"Could not connect to Huobi.", NSLocalizedFailureReasonErrorKey, nil]];
     self.ticker = nil;
 }
 
